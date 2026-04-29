@@ -25,6 +25,12 @@ class PaymentStatus(str, Enum):
     REFUNDED = "refunded"
 
 
+class AddressType(str, Enum):
+    HOME = "home"
+    WORK = "work"
+    OTHER = "other"
+
+
 class OrderItem(BaseModel):
     medicine_id: str
     medicine_name: str
@@ -38,6 +44,8 @@ class OrderCreate(BaseModel):
     delivery_address: str
     delivery_latitude: float
     delivery_longitude: float
+    address_type: AddressType = AddressType.HOME
+    address_details: Optional[str] = None
     payment_method: PaymentMethod = PaymentMethod.COD
     notes: Optional[str] = None
 
@@ -60,6 +68,8 @@ class OrderOut(BaseModel):
     delivery_address: str
     delivery_latitude: float
     delivery_longitude: float
+    address_type: AddressType = AddressType.HOME
+    address_details: Optional[str] = None
     distance_km: float = 0.0
     payment_method: PaymentMethod
     payment_status: PaymentStatus = PaymentStatus.PENDING
