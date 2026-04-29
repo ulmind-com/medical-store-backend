@@ -11,6 +11,7 @@ class MedicineCreate(BaseModel):
     manufacturer: Optional[str] = None
     price: float = Field(..., gt=0)
     discount_price: Optional[float] = None
+    discount_valid_until: Optional[str] = None
     stock: int = Field(default=0, ge=0)
     requires_prescription: bool = False
     image_url: Optional[str] = None
@@ -27,6 +28,7 @@ class MedicineUpdate(BaseModel):
     manufacturer: Optional[str] = None
     price: Optional[float] = None
     discount_price: Optional[float] = None
+    discount_valid_until: Optional[str] = None
     stock: Optional[int] = None
     requires_prescription: Optional[bool] = None
     image_url: Optional[str] = None
@@ -44,6 +46,7 @@ class MedicineOut(BaseModel):
     manufacturer: Optional[str] = None
     price: float
     discount_price: Optional[float] = None
+    discount_valid_until: Optional[str] = None
     stock: int
     requires_prescription: bool = False
     image_url: Optional[str] = None
