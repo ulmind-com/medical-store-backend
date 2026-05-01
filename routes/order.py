@@ -29,7 +29,7 @@ def order_doc_to_out(doc: dict) -> OrderOut:
         payment_status=doc.get("payment_status", "pending"),
         razorpay_order_id=doc.get("razorpay_order_id"),
         razorpay_payment_id=doc.get("razorpay_payment_id"),
-        status=doc.get("status", "pending"),
+        status=doc.get("status", "placed"),
         notes=doc.get("notes"),
         created_at=doc.get("created_at", ""),
     )
@@ -67,7 +67,7 @@ async def create_order(data: OrderCreate, current_user: dict = Depends(get_curre
         "distance_km": delivery_info["distance_km"],
         "payment_method": data.payment_method,
         "payment_status": "pending",
-        "status": "pending",
+        "status": "placed",
         "notes": data.notes,
         "created_at": datetime.utcnow().isoformat(),
     }

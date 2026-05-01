@@ -84,7 +84,6 @@ async def verify_payment(
         {"$set": {
             "payment_status": "completed",
             "razorpay_payment_id": data.razorpay_payment_id,
-            "status": "confirmed",
         }},
     )
 

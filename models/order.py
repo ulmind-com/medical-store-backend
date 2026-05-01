@@ -4,7 +4,7 @@ from enum import Enum
 
 
 class OrderStatus(str, Enum):
-    PENDING = "pending"
+    PLACED = "placed"
     CONFIRMED = "confirmed"
     PROCESSING = "processing"
     SHIPPED = "shipped"
@@ -75,6 +75,6 @@ class OrderOut(BaseModel):
     payment_status: PaymentStatus = PaymentStatus.PENDING
     razorpay_order_id: Optional[str] = None
     razorpay_payment_id: Optional[str] = None
-    status: OrderStatus = OrderStatus.PENDING
+    status: OrderStatus = OrderStatus.PLACED
     notes: Optional[str] = None
     created_at: Optional[str] = None
