@@ -16,11 +16,15 @@ class AppointmentCreate(BaseModel):
     time_slot: str  # "09:00 - 09:30"
     reason: Optional[str] = None
     notes: Optional[str] = None
+    payment_method: str = "offline"  # "offline" | "online"
 
 
 class AppointmentUpdate(BaseModel):
     status: Optional[AppointmentStatus] = None
     notes: Optional[str] = None
+    payment_status: Optional[str] = None
+    razorpay_order_id: Optional[str] = None
+    razorpay_payment_id: Optional[str] = None
 
 
 class AppointmentOut(BaseModel):
@@ -35,4 +39,9 @@ class AppointmentOut(BaseModel):
     reason: Optional[str] = None
     notes: Optional[str] = None
     status: AppointmentStatus = AppointmentStatus.PENDING
+    payment_method: str = "offline"
+    payment_status: str = "pending"
+    consultation_fee: float = 0.0
+    razorpay_order_id: Optional[str] = None
+    razorpay_payment_id: Optional[str] = None
     created_at: Optional[str] = None

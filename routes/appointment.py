@@ -23,6 +23,11 @@ def appointment_doc_to_out(doc: dict) -> AppointmentOut:
         reason=doc.get("reason"),
         notes=doc.get("notes"),
         status=doc.get("status", "pending"),
+        payment_method=doc.get("payment_method", "offline"),
+        payment_status=doc.get("payment_status", "pending"),
+        consultation_fee=doc.get("consultation_fee", 0.0),
+        razorpay_order_id=doc.get("razorpay_order_id"),
+        razorpay_payment_id=doc.get("razorpay_payment_id"),
         created_at=doc.get("created_at", ""),
     )
 
@@ -61,6 +66,9 @@ async def create_appointment(
         "reason": data.reason,
         "notes": data.notes,
         "status": "pending",
+        "payment_method": data.payment_method,
+        "payment_status": "completed" if data.payment_method == "offline" else "pending",
+        "consultation_fee": doctor.get("consultation_fee", 0.0),
         "created_at": datetime.utcnow().isoformat(),
     }
 

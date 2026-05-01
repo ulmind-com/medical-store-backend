@@ -88,3 +88,81 @@ async def verify_payment(
     )
 
     return {"message": "Payment verified successfully", "status": "completed"}
+
+# ── Appointment Payments ──────────────────────────────────────────────────
+from config.database import appointments_collection
+
+class CreateAppointmentPayment(BaseModel):
+    appointment_id: str
+
+class VerifyAppointmentPayment(BaseModel):
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+    appointment_id: str
+
+@router.post("/appointment/create-order")
+async def create_appointment_razorpay_order(
+    data: CreateAppointmentPayment,
+    current_user: dict = Depends(get_current_user),
+):
+    appointment = await appointments_collection.find_one({"_id": ObjectId(data.appointment_id)})
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    if appointment["user_id"] != str(current_user["_id"]):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    if appointment.get("payment_method") != "online":
+        raise HTTPException(status_code=400, detail="Payment method is not online")
+
+    amount_in_paise = int(appointment.get("consultation_fee", 0) * 100)
+    if amount_in_paise <= 0:
+        raise HTTPException(status_code=400, detail="Invalid consultation fee")
+
+    razorpay_order = razorpay_client.order.create({
+        "amount": amount_in_paise,
+        "currency": "INR",
+        "receipt": str(appointment["_id"]),
+    })
+
+    await appointments_collection.update_one(
+        {"_id": ObjectId(data.appointment_id)},
+        {"$set": {"razorpay_order_id": razorpay_order["id"]}},
+    )
+
+    return {
+        "razorpay_order_id": razorpay_order["id"],
+        "amount": amount_in_paise,
+        "currency": "INR",
+        "key_id": settings.RAZORPAY_KEY_ID,
+    }
+
+
+@router.post("/appointment/verify")
+async def verify_appointment_payment(
+    data: VerifyAppointmentPayment,
+    current_user: dict = Depends(get_current_user),
+):
+    try:
+        razorpay_client.utility.verify_payment_signature({
+            "razorpay_order_id": data.razorpay_order_id,
+            "razorpay_payment_id": data.razorpay_payment_id,
+            "razorpay_signature": data.razorpay_signature,
+        })
+    except Exception:
+        await appointments_collection.update_one(
+            {"_id": ObjectId(data.appointment_id)},
+            {"$set": {"payment_status": "failed"}},
+        )
+        raise HTTPException(status_code=400, detail="Payment verification failed")
+
+    await appointments_collection.update_one(
+        {"_id": ObjectId(data.appointment_id)},
+        {"$set": {
+            "payment_status": "completed",
+            "razorpay_payment_id": data.razorpay_payment_id,
+        }},
+    )
+
+    return {"message": "Payment verified successfully", "status": "completed"}
