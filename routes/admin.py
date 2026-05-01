@@ -14,7 +14,7 @@ async def get_dashboard_stats(admin: dict = Depends(get_admin_user)):
     total_medicines = await medicines_collection.count_documents({})
     total_doctors = await doctors_collection.count_documents({})
     total_orders = await orders_collection.count_documents({})
-    pending_orders = await orders_collection.count_documents({"status": "pending"})
+    pending_orders = await orders_collection.count_documents({"status": {"$in": ["pending", "placed"]}})
     total_prescriptions = await prescriptions_collection.count_documents({})
     pending_prescriptions = await prescriptions_collection.count_documents({"status": "pending"})
     total_appointments = await appointments_collection.count_documents({})
@@ -36,7 +36,7 @@ async def get_dashboard_stats(admin: dict = Depends(get_admin_user)):
             "id": str(o["_id"]),
             "user_name": o.get("user_name", ""),
             "total_amount": o["total_amount"],
-            "status": o["status"],
+            "status": "placed" if o.get("status") == "pending" else o.get("status", "placed"),
             "created_at": o.get("created_at", ""),
         }
         for o in recent_orders

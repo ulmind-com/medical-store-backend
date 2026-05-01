@@ -29,7 +29,7 @@ def order_doc_to_out(doc: dict) -> OrderOut:
         payment_status=doc.get("payment_status", "pending"),
         razorpay_order_id=doc.get("razorpay_order_id"),
         razorpay_payment_id=doc.get("razorpay_payment_id"),
-        status=doc.get("status", "placed"),
+        status="placed" if doc.get("status") == "pending" else doc.get("status", "placed"),
         notes=doc.get("notes"),
         created_at=doc.get("created_at", ""),
     )
