@@ -24,6 +24,10 @@ def prescription_doc_to_out(doc: dict) -> PrescriptionOut:
         delivery_address=doc.get("delivery_address"),
         delivery_latitude=doc.get("delivery_latitude"),
         delivery_longitude=doc.get("delivery_longitude"),
+        quoted_price=doc.get("quoted_price"),
+        payment_status=doc.get("payment_status", "unpaid"),
+        razorpay_order_id=doc.get("razorpay_order_id"),
+        razorpay_payment_id=doc.get("razorpay_payment_id"),
         created_at=doc.get("created_at", ""),
     )
 
@@ -53,6 +57,8 @@ async def upload_prescription(
         "delivery_address": delivery_address,
         "delivery_latitude": delivery_latitude,
         "delivery_longitude": delivery_longitude,
+        "quoted_price": None,
+        "payment_status": "unpaid",
         "created_at": datetime.utcnow().isoformat(),
     }
 

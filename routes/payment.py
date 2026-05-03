@@ -2,7 +2,7 @@ import razorpay
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from config.settings import get_settings
-from config.database import orders_collection
+from config.database import orders_collection, appointments_collection, prescriptions_collection
 from middleware.auth import get_current_user
 from bson import ObjectId
 
@@ -166,3 +166,82 @@ async def verify_appointment_payment(
     )
 
     return {"message": "Payment verified successfully", "status": "completed"}
+
+# --- Prescription Payment Routes ---
+
+class CreatePrescriptionPaymentOrder(BaseModel):
+    prescription_id: str
+
+class VerifyPrescriptionPayment(BaseModel):
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+    prescription_id: str
+
+@router.post("/prescription/create")
+async def create_prescription_razorpay_order(
+    data: CreatePrescriptionPaymentOrder,
+    current_user: dict = Depends(get_current_user),
+):
+    prescription = await prescriptions_collection.find_one({"_id": ObjectId(data.prescription_id)})
+    if not prescription:
+        raise HTTPException(status_code=404, detail="Prescription not found")
+
+    if prescription["user_id"] != str(current_user["_id"]):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    if prescription.get("payment_status") == "paid" or prescription.get("status") == "processed":
+        raise HTTPException(status_code=400, detail="Prescription is already paid")
+
+    if not prescription.get("quoted_price"):
+        raise HTTPException(status_code=400, detail="Price has not been quoted yet")
+
+    amount_in_paise = int(prescription["quoted_price"] * 100)
+
+    razorpay_order = razorpay_client.order.create({
+        "amount": amount_in_paise,
+        "currency": "INR",
+        "receipt": str(prescription["_id"]),
+        "payment_capture": "1",
+    })
+
+    await prescriptions_collection.update_one(
+        {"_id": ObjectId(data.prescription_id)},
+        {"$set": {"razorpay_order_id": razorpay_order["id"]}},
+    )
+
+    return {
+        "razorpay_order_id": razorpay_order["id"],
+        "amount": amount_in_paise,
+        "currency": "INR",
+        "key_id": settings.RAZORPAY_KEY_ID,
+        "prescription_id": data.prescription_id,
+        "name": "Medical Store Prescription",
+        "description": "Prescription Order Payment",
+    }
+
+
+@router.post("/prescription/verify")
+async def verify_prescription_payment(
+    data: VerifyPrescriptionPayment,
+    current_user: dict = Depends(get_current_user),
+):
+    try:
+        razorpay_client.utility.verify_payment_signature({
+            "razorpay_order_id": data.razorpay_order_id,
+            "razorpay_payment_id": data.razorpay_payment_id,
+            "razorpay_signature": data.razorpay_signature,
+        })
+    except Exception:
+        raise HTTPException(status_code=400, detail="Payment verification failed")
+
+    await prescriptions_collection.update_one(
+        {"_id": ObjectId(data.prescription_id)},
+        {"$set": {
+            "payment_status": "paid",
+            "status": "processed",
+            "razorpay_payment_id": data.razorpay_payment_id,
+        }},
+    )
+
+    return {"message": "Payment verified successfully", "status": "processed"}
