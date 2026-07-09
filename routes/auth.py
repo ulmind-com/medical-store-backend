@@ -12,6 +12,8 @@ from models.user import (
     UserOut,
     UserUpdate,
     TokenResponse,
+    RefreshRequest,
+    RefreshResponse,
 )
 from middleware.auth import get_current_user
 from utils.cloudinary_upload import upload_image
@@ -23,7 +25,13 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def create_access_token(user_id: str) -> str:
     expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode = {"sub": user_id, "exp": expire}
+    to_encode = {"sub": user_id, "exp": expire, "type": "access"}
+    return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
+def create_refresh_token(user_id: str) -> str:
+    expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode = {"sub": user_id, "exp": expire, "type": "refresh"}
     return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
@@ -78,9 +86,11 @@ async def register(user_data: UserCreate):
     result = await users_collection.insert_one(user_doc)
     user_doc["_id"] = result.inserted_id
 
-    token = create_access_token(str(result.inserted_id))
+    access_token = create_access_token(str(result.inserted_id))
+    refresh_token = create_refresh_token(str(result.inserted_id))
     return TokenResponse(
-        access_token=token,
+        access_token=access_token,
+        refresh_token=refresh_token,
         user=user_doc_to_out(user_doc),
     )
 
@@ -94,10 +104,43 @@ async def login(user_data: UserLogin):
             detail="Invalid email or password",
         )
 
-    token = create_access_token(str(user["_id"]))
+    access_token = create_access_token(str(user["_id"]))
+    refresh_token = create_refresh_token(str(user["_id"]))
     return TokenResponse(
-        access_token=token,
+        access_token=access_token,
+        refresh_token=refresh_token,
         user=user_doc_to_out(user),
+    )
+
+
+@router.post("/refresh", response_model=RefreshResponse)
+async def refresh_token(data: RefreshRequest):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate refresh token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(
+            data.refresh_token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
+        )
+        user_id: str = payload.get("sub")
+        token_type: str = payload.get("type")
+        if user_id is None or token_type != "refresh":
+            raise credentials_exception
+    except Exception:
+        raise credentials_exception
+
+    user = await users_collection.find_one({"_id": ObjectId(user_id)})
+    if user is None:
+        raise credentials_exception
+
+    new_access_token = create_access_token(user_id)
+    new_refresh_token = create_refresh_token(user_id)
+
+    return RefreshResponse(
+        access_token=new_access_token,
+        refresh_token=new_refresh_token,
     )
 
 
