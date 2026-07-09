@@ -35,6 +35,13 @@ try:
         if os.path.exists("firebase-service-account.json"):
             cred = credentials.Certificate("firebase-service-account.json")
             firebase_admin.initialize_app(cred)
+        elif os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON"):
+            try:
+                firebase_info = json.loads(os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON"))
+                cred = credentials.Certificate(firebase_info)
+                firebase_admin.initialize_app(cred)
+            except Exception as env_err:
+                print(f"Failed to load Firebase from environment variable: {env_err}")
         else:
             try:
                 firebase_admin.initialize_app()
