@@ -15,6 +15,7 @@ orders_collection = database.get_collection("orders")
 prescriptions_collection = database.get_collection("prescriptions")
 settings_collection = database.get_collection("shop_settings")
 categories_collection = database.get_collection("categories")
+crash_logs_collection = database.get_collection("crash_logs")
 
 
 async def init_db():
