@@ -42,15 +42,78 @@ async def get_medicines(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
 ):
-    query = {}
-    if category:
-        query["category"] = category
-    if search:
-        query["name"] = {"$regex": search, "$options": "i"}
-
     skip = (page - 1) * limit
-    cursor = medicines_collection.find(query).skip(skip).limit(limit).sort("name", 1)
-    medicines = await cursor.to_list(length=limit)
+
+    if search:
+        # 1. Try MongoDB Atlas Search ($search) with fuzzy matching
+        try:
+            pipeline = [
+                {
+                    "$search": {
+                        "index": "default",
+                        "text": {
+                            "query": search,
+                            "path": ["name", "generic_name", "description"],
+                            "fuzzy": {
+                                "maxEdits": 2
+                            }
+                        }
+                    }
+                }
+            ]
+            if category:
+                pipeline.append({"$match": {"category": category}})
+            
+            pipeline.extend([
+                {"$skip": skip},
+                {"$limit": limit}
+            ])
+            cursor = medicines_collection.aggregate(pipeline)
+            medicines = await cursor.to_list(length=limit)
+        except Exception as e:
+            # 2. Fall back to local MongoDB $text search if Atlas Search isn't configured
+            try:
+                await medicines_collection.create_index([
+                    ("name", "text"),
+                    ("generic_name", "text"),
+                    ("description", "text")
+                ], name="medicine_text_index")
+            except Exception:
+                pass  # Index already exists or cannot create
+
+            text_query = {"$text": {"$search": search}}
+            if category:
+                text_query["category"] = category
+
+            try:
+                cursor = medicines_collection.find(
+                    text_query,
+                    {"score": {"$meta": "textScore"}}
+                ).sort([("score", {"$meta": "textScore"})]).skip(skip).limit(limit)
+                medicines = await cursor.to_list(length=limit)
+            except Exception:
+                medicines = []
+
+            # 3. Fall back to regex search if $text search yielded zero results
+            if not medicines:
+                regex_query = {
+                    "$or": [
+                        {"name": {"$regex": search, "$options": "i"}},
+                        {"generic_name": {"$regex": search, "$options": "i"}},
+                        {"description": {"$regex": search, "$options": "i"}}
+                    ]
+                }
+                if category:
+                    regex_query["category"] = category
+                cursor = medicines_collection.find(regex_query).skip(skip).limit(limit).sort("name", 1)
+                medicines = await cursor.to_list(length=limit)
+    else:
+        query = {}
+        if category:
+            query["category"] = category
+        cursor = medicines_collection.find(query).skip(skip).limit(limit).sort("name", 1)
+        medicines = await cursor.to_list(length=limit)
+
     return [medicine_doc_to_out(m) for m in medicines]
 
 
