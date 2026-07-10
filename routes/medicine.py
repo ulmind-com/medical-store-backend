@@ -27,6 +27,8 @@ def medicine_doc_to_out(doc: dict) -> MedicineOut:
         dosage_form=doc.get("dosage_form"),
         strength=doc.get("strength"),
         pack_size=doc.get("pack_size"),
+        unit_type=doc.get("unit_type", "tablet"),
+        quantity_per_unit=doc.get("quantity_per_unit", 1),
         created_at=doc.get("created_at", ""),
     )
 

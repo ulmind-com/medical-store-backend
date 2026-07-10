@@ -191,7 +191,10 @@ async def create_order(
 
         # Accumulate subtotal using the cart-submitted price.
         subtotal += item.price * item.quantity
-        validated_items.append(item.model_dump())
+        item_dict = item.model_dump()
+        item_dict["unit_type"] = pre_update_doc.get("unit_type", "tablet")
+        item_dict["quantity_per_unit"] = pre_update_doc.get("quantity_per_unit", 1)
+        validated_items.append(item_dict)
 
     # ── Phase 2: Delivery charge calculation ────────────────────────────────
     # This is a pure read — no stock impact — so it is safe after Phase 1.

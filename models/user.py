@@ -30,6 +30,7 @@ class UserOut(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     profile_image: Optional[str] = None
+    expo_push_token: Optional[str] = None
     created_at: Optional[str] = None
 
 
@@ -40,6 +41,7 @@ class UserUpdate(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     profile_image: Optional[str] = None
+    expo_push_token: Optional[str] = None
 
 
 class TokenResponse(BaseModel):

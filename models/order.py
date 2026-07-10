@@ -37,6 +37,8 @@ class OrderItem(BaseModel):
     quantity: int = Field(..., gt=0)
     price: float
     image_url: Optional[str] = None
+    unit_type: Optional[str] = "tablet"
+    quantity_per_unit: Optional[int] = 1
 
 
 class OrderCreate(BaseModel):

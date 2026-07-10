@@ -13,6 +13,8 @@ from routes.payment import router as payment_router
 from routes.settings import router as settings_router
 from routes.admin import router as admin_router
 from routes.logs import router as logs_router
+from routes.reminder import router as reminder_router
+from utils.reminder_scheduler import start_reminder_scheduler
 
 
 @asynccontextmanager
@@ -20,6 +22,7 @@ async def lifespan(app: FastAPI):
     # Startup
     await init_db()
     print("[OK] Database initialized and indexes created")
+    start_reminder_scheduler()
     yield
     # Shutdown
     print("[BYE] Shutting down...")
@@ -52,6 +55,7 @@ app.include_router(payment_router)
 app.include_router(settings_router)
 app.include_router(admin_router)
 app.include_router(logs_router)
+app.include_router(reminder_router)
 
 
 @app.get("/")

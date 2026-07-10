@@ -3,6 +3,13 @@ from typing import Optional, List
 from enum import Enum
 
 
+class UnitType(str, Enum):
+    TABLET = "tablet"
+    SYRUP = "syrup"
+    CAPSULE = "capsule"
+    OTHER = "other"
+
+
 class MedicineCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=200)
     generic_name: Optional[str] = None
@@ -18,6 +25,8 @@ class MedicineCreate(BaseModel):
     dosage_form: Optional[str] = None  # tablet, syrup, injection, etc.
     strength: Optional[str] = None  # e.g., "500mg"
     pack_size: Optional[str] = None  # e.g., "10 tablets"
+    unit_type: Optional[UnitType] = UnitType.TABLET
+    quantity_per_unit: Optional[int] = 1
 
 
 class MedicineUpdate(BaseModel):
@@ -35,6 +44,8 @@ class MedicineUpdate(BaseModel):
     dosage_form: Optional[str] = None
     strength: Optional[str] = None
     pack_size: Optional[str] = None
+    unit_type: Optional[UnitType] = None
+    quantity_per_unit: Optional[int] = None
 
 
 class MedicineOut(BaseModel):
@@ -53,6 +64,8 @@ class MedicineOut(BaseModel):
     dosage_form: Optional[str] = None
     strength: Optional[str] = None
     pack_size: Optional[str] = None
+    unit_type: Optional[UnitType] = UnitType.TABLET
+    quantity_per_unit: Optional[int] = 1
     created_at: Optional[str] = None
 
 

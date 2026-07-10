@@ -16,6 +16,7 @@ prescriptions_collection = database.get_collection("prescriptions")
 settings_collection = database.get_collection("shop_settings")
 categories_collection = database.get_collection("categories")
 crash_logs_collection = database.get_collection("crash_logs")
+reminders_collection = database.get_collection("reminders")
 
 
 async def init_db():
@@ -29,6 +30,8 @@ async def init_db():
     await prescriptions_collection.create_index("user_id")
     await appointments_collection.create_index("user_id")
     await appointments_collection.create_index("doctor_id")
+    await reminders_collection.create_index("user_id")
+    await reminders_collection.create_index("trigger_date")
 
     # Ensure default shop settings exist
     existing = await settings_collection.find_one({"key": "shop_config"})

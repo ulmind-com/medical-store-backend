@@ -46,6 +46,7 @@ def user_doc_to_out(user: dict) -> UserOut:
         latitude=user.get("latitude"),
         longitude=user.get("longitude"),
         profile_image=user.get("profile_image"),
+        expo_push_token=user.get("expo_push_token"),
         created_at=user.get("created_at", ""),
     )
 
