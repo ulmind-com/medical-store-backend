@@ -32,6 +32,12 @@ async def init_db():
     await appointments_collection.create_index("doctor_id")
     await reminders_collection.create_index("user_id")
     await reminders_collection.create_index("trigger_date")
+    # Queue indexes: compound index for (doctor_id, date, queue_status) is critical
+    # for the atomic /next query that must find the earliest WAITING patient fast.
+    await appointments_collection.create_index(
+        [("doctor_id", 1), ("date", 1), ("queue_status", 1), ("queue_position", 1)],
+        name="queue_lookup_idx"
+    )
 
     # Ensure default shop settings exist
     existing = await settings_collection.find_one({"key": "shop_config"})
