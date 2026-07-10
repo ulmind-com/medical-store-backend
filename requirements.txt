@@ -37,10 +37,13 @@ httptools==0.8.0
 httpx==0.28.1
 hyperframe==6.1.0
 idna==3.18
+iniconfig==2.3.0
 motor==3.5.0
 msgpack==1.2.1
 multidict==6.7.1
+packaging==26.2
 passlib==1.7.4
+pluggy==1.6.0
 propcache==0.5.2
 proto-plus==1.28.1
 protobuf==7.35.1
@@ -50,8 +53,11 @@ pycparser==3.0
 pydantic==2.13.4
 pydantic-settings==2.14.2
 pydantic_core==2.46.4
+Pygments==2.20.0
 PyJWT==2.13.0
 pymongo==4.8.0
+pytest==9.1.1
+pytest-asyncio==1.4.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
 python-jose==3.3.0
