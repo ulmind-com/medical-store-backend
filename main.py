@@ -14,6 +14,7 @@ from routes.settings import router as settings_router
 from routes.admin import router as admin_router
 from routes.logs import router as logs_router
 from routes.reminder import router as reminder_router
+from routes.webhooks import router as webhooks_router
 from utils.reminder_scheduler import start_reminder_scheduler
 
 
@@ -56,6 +57,7 @@ app.include_router(settings_router)
 app.include_router(admin_router)
 app.include_router(logs_router)
 app.include_router(reminder_router)
+app.include_router(webhooks_router)
 
 
 @app.get("/")

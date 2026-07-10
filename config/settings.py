@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     RAZORPAY_KEY_ID: str
     RAZORPAY_KEY_SECRET: str
-
+    CLERK_WEBHOOK_SECRET: str = ""
 
 
     class Config:
