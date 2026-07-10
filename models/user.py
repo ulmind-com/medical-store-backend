@@ -59,6 +59,5 @@ class RefreshResponse(BaseModel):
     token_type: str = "bearer"
 
 
-class GoogleLoginRequest(BaseModel):
-    id_token: str
+
 

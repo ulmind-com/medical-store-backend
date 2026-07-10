@@ -16,10 +16,7 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_ID: str
     RAZORPAY_KEY_SECRET: str
 
-    # Google OAuth (server-side authorization code flow — works in Expo Go)
-    GOOGLE_CLIENT_ID: str = "94751380370-j7lqf6pt5ptv7fiv6h2pt8k9i12n8e22.apps.googleusercontent.com"
-    GOOGLE_CLIENT_SECRET: str = ""
-    GOOGLE_REDIRECT_URI: str = "https://medical-store-backend-qklg.onrender.com/api/auth/google/callback"
+
 
     class Config:
         env_file = ".env"
