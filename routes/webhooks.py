@@ -79,24 +79,27 @@ async def clerk_webhook(request: Request):
             "clerk_id": clerk_id,
             "name": full_name,
             "email": primary_email.lower() if primary_email else "",
-            "phone": primary_phone,
             "role": role,
             "profile_image": profile_image,
             "created_at": datetime.utcnow().isoformat(),
         }
+        if primary_phone:
+            user_doc["phone"] = primary_phone
 
         # Check if user already exists in DB by email to link them
         if primary_email:
             existing = await users_collection.find_one({"email": primary_email.lower()})
             if existing:
+                link_update = {
+                    "clerk_id": clerk_id,
+                    "name": full_name,
+                    "profile_image": profile_image if profile_image else existing.get("profile_image"),
+                }
+                if primary_phone:
+                    link_update["phone"] = primary_phone
                 await users_collection.update_one(
                     {"_id": existing["_id"]},
-                    {"$set": {
-                        "clerk_id": clerk_id,
-                        "name": full_name,
-                        "phone": primary_phone if primary_phone else existing.get("phone"),
-                        "profile_image": profile_image if profile_image else existing.get("profile_image"),
-                    }}
+                    {"$set": link_update}
                 )
                 return {"status": "success", "message": "Linked Clerk ID to existing user account"}
 

@@ -15,9 +15,9 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 def user_doc_to_out(user: dict) -> UserOut:
     return UserOut(
         id=str(user["_id"]),
-        name=user["name"],
-        email=user["email"],
-        phone=user.get("phone", ""),
+        name=user.get("name") or "User",
+        email=user.get("email") or "",
+        phone=user.get("phone"),
         role=user.get("role", "user"),
         address=user.get("address"),
         latitude=user.get("latitude"),
@@ -26,6 +26,7 @@ def user_doc_to_out(user: dict) -> UserOut:
         expo_push_token=user.get("expo_push_token"),
         created_at=user.get("created_at", ""),
     )
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -91,11 +92,16 @@ async def upsert_me(payload: dict = Depends(get_clerk_payload)):
             "clerk_id": clerk_id,
             "name": name,
             "email": email,
-            "phone": "",
             "role": role,
             "profile_image": profile_image,
             "created_at": now,
         }
+        
+        # Only set phone if actually provided and not empty
+        phone = (payload.get("phone_number") or payload.get("phone") or "").strip()
+        if phone:
+            user_doc["phone"] = phone
+
         result = await users_collection.insert_one(user_doc)
         user = await users_collection.find_one({"_id": result.inserted_id})
 

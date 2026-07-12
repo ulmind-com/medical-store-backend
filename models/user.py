@@ -23,8 +23,8 @@ class UserLogin(BaseModel):
 class UserOut(BaseModel):
     id: str
     name: str
-    email: str
-    phone: str
+    email: str = ""
+    phone: Optional[str] = None   # Clerk OAuth users may not have a phone
     role: UserRole = UserRole.USER
     address: Optional[str] = None
     latitude: Optional[float] = None

@@ -1,75 +1,136 @@
+"""
+middleware/auth.py
+──────────────────────────────────────────────────────────────────────────────
+Clerk JWT verification middleware using JWKS public key.
+
+Fixed issues:
+  - python-jose requires the RSA public key object, NOT the raw JWKS dict
+  - Proper key matching by kid (key ID) from JWT header
+  - get_clerk_payload: returns raw claims (no MongoDB lookup)
+  - get_current_user: returns MongoDB user doc
+"""
 import os
 import requests
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt
+from jose import jwt, jwk
 from jose.exceptions import JWTError
 from config.database import users_collection
 
 security = HTTPBearer()
 
-# Derive JWKS URL from the publishable key's domain
+# ── JWKS URL ───────────────────────────────────────────────────────────────
+# Always use the hardcoded domain from the publishable key.
 # pk_test_YWRhcHRlZC1zb2xlLTMuY2xlcmsuYWNjb3VudHMuZGV2JA
-# → base64 decode middle segment → adapted-sole-3.clerk.accounts.dev
-def _derive_jwks_url() -> str:
-    import base64
-    pk = os.environ.get("CLERK_PUBLISHABLE_KEY", "")
-    if not pk:
-        # Fallback: hardcoded from .env publishable key domain
-        return "https://adapted-sole-3.clerk.accounts.dev/.well-known/jwks.json"
+# → domain: adapted-sole-3.clerk.accounts.dev
+CLERK_JWKS_URL = "https://adapted-sole-3.clerk.accounts.dev/.well-known/jwks.json"
+
+# Simple in-memory cache — keyed by kid → RSA public key
+_jwks_key_cache: dict = {}
+_jwks_loaded = False
+
+
+def _load_jwks() -> bool:
+    """
+    Fetch JWKS from Clerk and populate the key cache.
+    Returns True on success.
+    """
+    global _jwks_loaded
     try:
-        # pk_test_<base64-encoded-domain> → decode to get the instance domain
-        encoded = pk.split("_", 2)[-1]
-        # Add padding
-        padded = encoded + "=" * (-len(encoded) % 4)
-        domain = base64.b64decode(padded).decode("utf-8").rstrip("$")
-        return f"https://{domain}/.well-known/jwks.json"
-    except Exception:
-        return "https://adapted-sole-3.clerk.accounts.dev/.well-known/jwks.json"
+        resp = requests.get(CLERK_JWKS_URL, timeout=10)
+        if resp.status_code != 200:
+            print(f"[Auth] JWKS fetch failed: HTTP {resp.status_code}")
+            return False
 
-CLERK_JWKS_URL = _derive_jwks_url()
-_jwks_cache = None
+        data = resp.json()
+        for key_data in data.get("keys", []):
+            kid = key_data.get("kid")
+            if kid:
+                # Construct the public key object from JWK
+                rsa_key = jwk.construct(key_data)
+                _jwks_key_cache[kid] = rsa_key
+
+        _jwks_loaded = True
+        print(f"[Auth] Loaded {len(_jwks_key_cache)} JWKS key(s) from Clerk")
+        return True
+    except Exception as e:
+        print(f"[Auth] Error loading JWKS: {e}")
+        return False
 
 
-def get_jwks():
-    global _jwks_cache
-    if _jwks_cache is None:
-        try:
-            resp = requests.get(CLERK_JWKS_URL, timeout=10)
-            if resp.status_code == 200:
-                _jwks_cache = resp.json()
-                print(f"[Auth] Loaded JWKS from {CLERK_JWKS_URL}")
-            else:
-                print(f"[Auth] JWKS fetch failed: {resp.status_code}")
-        except Exception as e:
-            print(f"[Auth] Error fetching Clerk JWKS: {e}")
-    return _jwks_cache
+def _get_public_key(token: str):
+    """
+    Extract the kid from the JWT header and return the matching RSA key.
+    Reloads JWKS if the key is not found (handles key rotation).
+    """
+    global _jwks_loaded
+
+    # Decode header without verification to get kid
+    try:
+        header = jwt.get_unverified_header(token)
+    except JWTError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token header: {e}",
+        )
+
+    kid = header.get("kid")
+
+    # Load JWKS if not loaded yet
+    if not _jwks_loaded or (kid and kid not in _jwks_key_cache):
+        _load_jwks()
+
+    if not _jwks_key_cache:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service temporarily unavailable (JWKS unavailable)",
+        )
+
+    # Match key by kid, or fall back to first available key
+    if kid and kid in _jwks_key_cache:
+        return _jwks_key_cache[kid]
+    elif _jwks_key_cache:
+        # Fallback: use first key (handles cases where kid is missing)
+        return next(iter(_jwks_key_cache.values()))
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No matching signing key found",
+        )
 
 
 def _decode_token(token: str) -> dict:
-    """Decode and verify a Clerk RS256 JWT. Returns the payload dict."""
-    jwks = get_jwks()
-    if not jwks:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authentication service temporarily unavailable",
-        )
+    """
+    Verify and decode a Clerk RS256 JWT.
+    Returns the payload dict on success, raises HTTPException on failure.
+    """
+    public_key = _get_public_key(token)
+
     try:
         payload = jwt.decode(
             token,
-            jwks,
+            public_key.public_key(),  # RSA public key object
             algorithms=["RS256"],
             options={"verify_aud": False},
         )
         return payload
     except JWTError as e:
-        print(f"[Auth] JWT verification failed: {e}")
+        print(f"[Auth] JWT decode failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token verification failed",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except Exception as e:
+        print(f"[Auth] Unexpected error decoding token: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+
+# ── FastAPI Dependencies ───────────────────────────────────────────────────
 
 async def get_clerk_payload(
     credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -87,28 +148,31 @@ async def get_current_user(
 ) -> dict:
     """
     Dependency: verify Clerk JWT and return the MongoDB user document.
-    Returns 401 if user not found in DB (call /upsert first).
+    Call /api/auth/upsert first to ensure user exists.
     """
-    token = credentials.credentials
-    payload = _decode_token(token)
+    payload = _decode_token(credentials.credentials)
 
-    clerk_id: str = payload.get("sub")
+    clerk_id: str = payload.get("sub", "")
     if not clerk_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token: missing subject",
         )
 
-    # Find user by clerk_id
+    # Primary lookup by clerk_id
     user = await users_collection.find_one({"clerk_id": clerk_id})
 
     if user is None:
-        # Fallback: try to find by email claim
-        email = (payload.get("email") or payload.get("primary_email_address") or "").lower()
+        # Fallback: find by email and link clerk_id
+        email = (
+            payload.get("email")
+            or payload.get("primary_email_address")
+            or ""
+        ).lower()
+
         if email:
             user = await users_collection.find_one({"email": email})
             if user:
-                # Link clerk_id going forward
                 await users_collection.update_one(
                     {"_id": user["_id"]},
                     {"$set": {"clerk_id": clerk_id}}
@@ -117,7 +181,7 @@ async def get_current_user(
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User profile not found. Please call /api/auth/upsert first.",
+            detail="User not found. Call POST /api/auth/upsert to create your profile.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -133,4 +197,3 @@ async def get_admin_user(current_user: dict = Depends(get_current_user)):
             detail="Admin access required",
         )
     return current_user
-

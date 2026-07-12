@@ -22,7 +22,13 @@ reminders_collection = database.get_collection("reminders")
 async def init_db():
     """Create indexes for collections."""
     await users_collection.create_index("email", unique=True)
-    await users_collection.create_index("phone", unique=True)
+    # Drop the old unique index on phone if it exists to avoid IndexOptionsConflict,
+    # then recreate it with sparse=True so that documents missing 'phone' are not indexed
+    try:
+        await users_collection.drop_index("phone_1")
+    except Exception:
+        pass
+    await users_collection.create_index("phone", unique=True, sparse=True)
     await medicines_collection.create_index("name")
     await medicines_collection.create_index("category")
     await doctors_collection.create_index("specialty")
