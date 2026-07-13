@@ -4,7 +4,7 @@ from datetime import datetime
 
 from config.settings import get_settings
 from config.database import users_collection
-from models.user import UserOut, UserUpdate
+from models.user import UserOut, UserUpdate, ClerkUpsertIn
 from middleware.auth import get_current_user, get_clerk_payload
 from utils.cloudinary_upload import upload_image
 
@@ -37,28 +37,47 @@ def user_doc_to_out(user: dict) -> UserOut:
 # This is the RELIABLE fallback when the Svix webhook is not configured.
 # ─────────────────────────────────────────────────────────────────────────────
 @router.post("/upsert", response_model=UserOut)
-async def upsert_me(payload: dict = Depends(get_clerk_payload)):
+async def upsert_me(
+    body: ClerkUpsertIn = ClerkUpsertIn(),
+    payload: dict = Depends(get_clerk_payload),
+):
     """
-    Create or update MongoDB user from Clerk JWT claims.
-    Idempotent — safe to call on every login.
+    Create or update MongoDB user from Clerk JWT claims + profile data
+    sent by the app. Idempotent — safe to call on every login.
+
+    NOTE: Clerk's default session JWT does NOT include name/email claims,
+    so the app sends the profile from its Clerk user object in the body.
+    Identity (clerk_id) always comes from the verified token, never the body.
     """
     clerk_id = payload.get("sub")
     if not clerk_id:
         raise HTTPException(status_code=400, detail="Invalid token: missing sub")
 
-    # Clerk puts email in different claims depending on version
+    # Email: JWT claims first (present only with a custom JWT template),
+    # then the profile sent by the app.
     email = (
         payload.get("email")
         or payload.get("primary_email_address")
+        or body.email
         or ""
-    ).lower()
+    ).strip().lower()
 
-    # Build name from first/last name claims
+    # Name: claims → app-provided profile → "User"
     first = payload.get("first_name") or payload.get("given_name") or ""
     last  = payload.get("last_name")  or payload.get("family_name") or ""
-    name  = f"{first} {last}".strip() or payload.get("name") or "User"
+    name  = (
+        f"{first} {last}".strip()
+        or payload.get("name")
+        or (body.name or "").strip()
+        or "User"
+    )
 
-    profile_image = payload.get("image_url") or payload.get("picture") or ""
+    profile_image = (
+        payload.get("image_url")
+        or payload.get("picture")
+        or (body.profile_image or "").strip()
+        or ""
+    )
     role = payload.get("public_metadata", {}).get("role", "user") if isinstance(payload.get("public_metadata"), dict) else "user"
 
     now = datetime.utcnow().isoformat()
@@ -69,17 +88,23 @@ async def upsert_me(payload: dict = Depends(get_clerk_payload)):
         existing = await users_collection.find_one({"email": email})
 
     if existing:
-        # Update existing record — never overwrite name/phone if already set
         update = {
             "clerk_id": clerk_id,
             "role": existing.get("role", role),  # preserve existing role
         }
+        # Fill/repair name: write it when we have a real one and the stored
+        # record is missing it or still has the "User" placeholder.
         if name and name != "User":
-            update["name"] = name
-        if email:
+            if not existing.get("name") or existing.get("name") == "User":
+                update["name"] = name
+        if email and not existing.get("email"):
             update["email"] = email
-        if profile_image:
+        if profile_image and not existing.get("profile_image"):
             update["profile_image"] = profile_image
+
+        phone = (payload.get("phone_number") or payload.get("phone") or body.phone or "").strip()
+        if phone and not existing.get("phone"):
+            update["phone"] = phone
 
         await users_collection.update_one(
             {"_id": existing["_id"]},
@@ -96,9 +121,9 @@ async def upsert_me(payload: dict = Depends(get_clerk_payload)):
             "profile_image": profile_image,
             "created_at": now,
         }
-        
+
         # Only set phone if actually provided and not empty
-        phone = (payload.get("phone_number") or payload.get("phone") or "").strip()
+        phone = (payload.get("phone_number") or payload.get("phone") or body.phone or "").strip()
         if phone:
             user_doc["phone"] = phone
 

@@ -34,6 +34,18 @@ class UserOut(BaseModel):
     created_at: Optional[str] = None
 
 
+class ClerkUpsertIn(BaseModel):
+    """Profile data sent by the app from the Clerk user object.
+
+    The default Clerk session JWT carries no name/email claims, so the app
+    must supply them. Identity still comes from the verified token `sub`.
+    """
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    profile_image: Optional[str] = None
+
+
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
