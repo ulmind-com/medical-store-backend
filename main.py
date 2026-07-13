@@ -10,6 +10,7 @@ from routes.appointment import router as appointment_router
 from routes.order import router as order_router
 from routes.prescription import router as prescription_router
 from routes.payment import router as payment_router
+from routes.catalog import router as catalog_router
 from routes.settings import router as settings_router
 from routes.admin import router as admin_router
 from routes.logs import router as logs_router
@@ -57,6 +58,7 @@ app.include_router(order_router)
 app.include_router(prescription_router)
 app.include_router(payment_router)
 app.include_router(settings_router)
+app.include_router(catalog_router)
 app.include_router(admin_router)
 app.include_router(logs_router)
 app.include_router(reminder_router)

@@ -19,6 +19,7 @@ crash_logs_collection = database.get_collection("crash_logs")
 reminders_collection = database.get_collection("reminders")
 ambulances_collection = database.get_collection("ambulances")
 sos_logs_collection = database.get_collection("sos_logs")
+master_catalog_collection = database.get_collection("master_catalog")
 
 
 async def init_db():
@@ -48,6 +49,7 @@ async def init_db():
         [("doctor_id", 1), ("date", 1), ("queue_status", 1), ("queue_position", 1)],
         name="queue_lookup_idx"
     )
+    await master_catalog_collection.create_index("gtin", unique=True)
 
     # Ensure default shop settings exist
     existing = await settings_collection.find_one({"key": "shop_config"})

@@ -3,7 +3,7 @@ from bson import ObjectId
 from datetime import datetime
 from typing import Optional
 
-from config.database import medicines_collection, categories_collection
+from config.database import medicines_collection, categories_collection, master_catalog_collection
 from models.medicine import MedicineCreate, MedicineUpdate, MedicineOut, CategoryCreate
 from middleware.auth import get_current_user, get_admin_user
 from utils.cloudinary_upload import upload_image
@@ -14,6 +14,9 @@ router = APIRouter(prefix="/api/medicines", tags=["Medicines"])
 def medicine_doc_to_out(doc: dict) -> MedicineOut:
     return MedicineOut(
         id=str(doc["_id"]),
+        gtin=doc.get("gtin"),
+        batch_number=doc.get("batch_number"),
+        expiry_date=doc.get("expiry_date"),
         name=doc["name"],
         generic_name=doc.get("generic_name"),
         description=doc.get("description"),
@@ -167,6 +170,22 @@ async def create_medicine(
     doc["created_at"] = datetime.utcnow().isoformat()
     result = await medicines_collection.insert_one(doc)
     doc["_id"] = result.inserted_id
+    
+    # Auto-learn into MasterCatalog if it has a GTIN
+    if doc.get("gtin"):
+        existing_gtin = await master_catalog_collection.find_one({"gtin": doc["gtin"]})
+        if not existing_gtin:
+            await master_catalog_collection.insert_one({
+                "gtin": doc["gtin"],
+                "name": doc["name"],
+                "brand": doc.get("manufacturer"),
+                "power_dosage": doc.get("strength"),
+                "default_mrp": doc.get("price", 0.0),
+                "category": doc.get("category"),
+                "dosage_form": doc.get("dosage_form"),
+                "pack_size": doc.get("pack_size")
+            })
+            
     return medicine_doc_to_out(doc)
 
 

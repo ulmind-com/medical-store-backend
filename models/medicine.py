@@ -11,6 +11,9 @@ class UnitType(str, Enum):
 
 
 class MedicineCreate(BaseModel):
+    gtin: Optional[str] = None
+    batch_number: Optional[str] = None
+    expiry_date: Optional[str] = None
     name: str = Field(..., min_length=2, max_length=200)
     generic_name: Optional[str] = None
     description: Optional[str] = None
@@ -50,6 +53,9 @@ class MedicineUpdate(BaseModel):
 
 class MedicineOut(BaseModel):
     id: str
+    gtin: Optional[str] = None
+    batch_number: Optional[str] = None
+    expiry_date: Optional[str] = None
     name: str
     generic_name: Optional[str] = None
     description: Optional[str] = None
