@@ -16,8 +16,11 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, jwk
 from jose.exceptions import JWTError
 from config.database import users_collection
+from config.settings import get_settings
 
+settings = get_settings()
 security = HTTPBearer()
+
 
 # ── JWKS URL ───────────────────────────────────────────────────────────────
 # Always use the hardcoded domain from the publishable key.
@@ -101,33 +104,61 @@ def _get_public_key(token: str):
 
 def _decode_token(token: str) -> dict:
     """
-    Verify and decode a Clerk RS256 JWT.
+    Verify and decode a JWT. Supports both Clerk RS256 and custom HS256.
     Returns the payload dict on success, raises HTTPException on failure.
     """
-    public_key = _get_public_key(token)
-
     try:
-        payload = jwt.decode(
-            token,
-            public_key.public_key(),  # RSA public key object
-            algorithms=["RS256"],
-            options={"verify_aud": False},
-        )
-        return payload
+        header = jwt.get_unverified_header(token)
     except JWTError as e:
-        print(f"[Auth] JWT decode failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token verification failed",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail=f"Invalid token header: {e}",
         )
-    except Exception as e:
-        print(f"[Auth] Unexpected error decoding token: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+
+    alg = header.get("alg")
+
+    if alg == "HS256":
+        # Custom JWT
+        try:
+            payload = jwt.decode(
+                token,
+                settings.JWT_SECRET,
+                algorithms=["HS256"],
+                options={"verify_aud": False},
+            )
+            return payload
+        except JWTError as e:
+            print(f"[Auth] Custom HS256 JWT decode failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token verification failed",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    else:
+        # Clerk JWT (RS256)
+        public_key = _get_public_key(token)
+        try:
+            payload = jwt.decode(
+                token,
+                public_key.public_key(),  # RSA public key object
+                algorithms=["RS256"],
+                options={"verify_aud": False},
+            )
+            return payload
+        except JWTError as e:
+            print(f"[Auth] Clerk RS256 JWT decode failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token verification failed",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        except Exception as e:
+            print(f"[Auth] Unexpected error decoding token: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
 
 # ── FastAPI Dependencies ───────────────────────────────────────────────────
@@ -147,46 +178,56 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> dict:
     """
-    Dependency: verify Clerk JWT and return the MongoDB user document.
-    Call /api/auth/upsert first to ensure user exists.
+    Dependency: verify JWT (either Clerk or Custom) and return the MongoDB user document.
     """
     payload = _decode_token(credentials.credentials)
 
-    clerk_id: str = payload.get("sub", "")
-    if not clerk_id:
+    sub: str = payload.get("sub", "")
+    if not sub:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token: missing subject",
         )
 
-    # Primary lookup by clerk_id
-    user = await users_collection.find_one({"clerk_id": clerk_id})
+    # Check if the token is a custom JWT
+    is_custom = payload.get("type") == "custom"
 
-    if user is None:
-        # Fallback: find by email and link clerk_id
-        email = (
-            payload.get("email")
-            or payload.get("primary_email_address")
-            or ""
-        ).lower()
+    if is_custom:
+        try:
+            from bson import ObjectId
+            user = await users_collection.find_one({"_id": ObjectId(sub)})
+        except Exception:
+            user = None
+    else:
+        # Primary lookup by clerk_id
+        user = await users_collection.find_one({"clerk_id": sub})
 
-        if email:
-            user = await users_collection.find_one({"email": email})
-            if user:
-                await users_collection.update_one(
-                    {"_id": user["_id"]},
-                    {"$set": {"clerk_id": clerk_id}}
-                )
+        if user is None:
+            # Fallback: find by email and link clerk_id
+            email = (
+                payload.get("email")
+                or payload.get("primary_email_address")
+                or ""
+            ).lower()
+
+            if email:
+                user = await users_collection.find_one({"email": email})
+                if user:
+                    await users_collection.update_one(
+                        {"_id": user["_id"]},
+                        {"$set": {"clerk_id": sub}}
+                    )
 
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found. Call POST /api/auth/upsert to create your profile.",
+            detail="User not found.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     user["id"] = str(user["_id"])
     return user
+
 
 
 async def get_admin_user(current_user: dict = Depends(get_current_user)):

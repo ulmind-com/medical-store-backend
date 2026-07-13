@@ -1,10 +1,12 @@
 from fastapi import APIRouter, HTTPException, status, UploadFile, File, Depends
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, timedelta
+from jose import jwt
+import bcrypt
 
 from config.settings import get_settings
 from config.database import users_collection
-from models.user import UserOut, UserUpdate, ClerkUpsertIn
+from models.user import UserOut, UserUpdate, ClerkUpsertIn, UserCreate, UserLogin, TokenResponse, RefreshRequest, RefreshResponse
 from middleware.auth import get_current_user, get_clerk_payload
 from utils.cloudinary_upload import upload_image
 
@@ -26,6 +28,130 @@ def user_doc_to_out(user: dict) -> UserOut:
         expo_push_token=user.get("expo_push_token"),
         created_at=user.get("created_at", ""),
     )
+
+
+def hash_password(password: str) -> str:
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+
+def create_token(user_id: str, token_type: str, expires_delta: timedelta) -> str:
+    payload = {
+        "sub": user_id,
+        "type": token_type,
+        "exp": datetime.utcnow() + expires_delta
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
+@router.post("/register", response_model=TokenResponse, status_code=201)
+async def register(body: UserCreate):
+    email = body.email.strip().lower()
+    
+    # Check if email is already taken
+    existing = await users_collection.find_one({"email": email})
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered"
+        )
+        
+    hashed_pwd = hash_password(body.password)
+    
+    user_doc = {
+        "name": body.name.strip(),
+        "email": email,
+        "phone": body.phone.strip(),
+        "password": hashed_pwd,
+        "role": "user",
+        "created_at": datetime.utcnow().isoformat()
+    }
+    
+    res = await users_collection.insert_one(user_doc)
+    user = await users_collection.find_one({"_id": res.inserted_id})
+    user_out = user_doc_to_out(user)
+    
+    access_token = create_token(user_out.id, "custom", timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
+    refresh_token = create_token(user_out.id, "custom", timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS))
+    
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=user_out
+    )
+
+
+@router.post("/login", response_model=TokenResponse)
+async def login(body: UserLogin):
+    email = body.email.strip().lower()
+    
+    user = await users_collection.find_one({"email": email})
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect email or password"
+        )
+        
+    hashed_pwd = user.get("password")
+    if not hashed_pwd or not verify_password(body.password, hashed_pwd):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect email or password"
+        )
+        
+    user_out = user_doc_to_out(user)
+    
+    access_token = create_token(user_out.id, "custom", timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
+    refresh_token = create_token(user_out.id, "custom", timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS))
+    
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=user_out
+    )
+
+
+@router.post("/refresh", response_model=RefreshResponse)
+async def refresh(body: RefreshRequest):
+    try:
+        payload = jwt.decode(
+            body.refresh_token,
+            settings.JWT_SECRET,
+            algorithms=["HS256"]
+        )
+        if payload.get("type") != "custom":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+            
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+            
+    except Exception:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid refresh token"
+        )
+        
+    # Check if user still exists
+    user = await users_collection.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+        
+    access_token = create_token(user_id, "custom", timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
+    refresh_token = create_token(user_id, "custom", timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS))
+    
+    return RefreshResponse(
+        access_token=access_token,
+        refresh_token=refresh_token
+    )
+
 
 
 
