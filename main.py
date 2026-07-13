@@ -16,6 +16,8 @@ from routes.logs import router as logs_router
 from routes.reminder import router as reminder_router
 from routes.webhooks import router as webhooks_router
 from routes.queue import router as queue_router
+from routes.ambulance import router as ambulance_router
+from routes.analytics import router as analytics_router
 from utils.reminder_scheduler import start_reminder_scheduler
 
 
@@ -60,6 +62,8 @@ app.include_router(logs_router)
 app.include_router(reminder_router)
 app.include_router(webhooks_router)
 app.include_router(queue_router)
+app.include_router(ambulance_router)
+app.include_router(analytics_router)
 
 
 @app.get("/")

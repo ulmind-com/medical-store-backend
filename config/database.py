@@ -17,10 +17,14 @@ settings_collection = database.get_collection("shop_settings")
 categories_collection = database.get_collection("categories")
 crash_logs_collection = database.get_collection("crash_logs")
 reminders_collection = database.get_collection("reminders")
+ambulances_collection = database.get_collection("ambulances")
+sos_logs_collection = database.get_collection("sos_logs")
 
 
 async def init_db():
     """Create indexes for collections."""
+    await ambulances_collection.create_index([("base_location", "2dsphere")])
+    await sos_logs_collection.create_index([("location", "2dsphere")])
     await users_collection.create_index("email", unique=True)
     # Drop the old unique index on phone if it exists to avoid IndexOptionsConflict,
     # then recreate it with sparse=True so that documents missing 'phone' are not indexed
