@@ -26,4 +26,24 @@ async def upload_image_bytes(file_bytes: bytes, folder: str = "medical_store") -
 
 def delete_image(public_id: str):
     """Delete an image from Cloudinary by its public_id."""
-    cloudinary.uploader.destroy(public_id)
+    try:
+        cloudinary.uploader.destroy(public_id)
+    except Exception as e:
+        print(f"Error deleting image from Cloudinary: {e}")
+
+def extract_public_id(url: str) -> str:
+    """Extract public_id from a Cloudinary URL."""
+    if not url:
+        return ""
+    try:
+        parts = url.split("/upload/")
+        if len(parts) > 1:
+            path = parts[1]
+            if path.startswith("v") and "/" in path:
+                version_end = path.find("/")
+                if path[1:version_end].isdigit():
+                    path = path[version_end+1:]
+            return path.rsplit(".", 1)[0]
+    except Exception:
+        pass
+    return ""

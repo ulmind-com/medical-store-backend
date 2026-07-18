@@ -6,7 +6,7 @@ from typing import Optional
 from config.database import medicines_collection, categories_collection, master_catalog_collection
 from models.medicine import MedicineCreate, MedicineUpdate, MedicineOut, CategoryCreate
 from middleware.auth import get_current_user, get_admin_user
-from utils.cloudinary_upload import upload_image
+from utils.cloudinary_upload import upload_image, delete_image, extract_public_id
 
 router = APIRouter(prefix="/api/medicines", tags=["Medicines"])
 
@@ -27,6 +27,7 @@ def medicine_doc_to_out(doc: dict) -> MedicineOut:
         stock=doc.get("stock", 0),
         requires_prescription=doc.get("requires_prescription", False),
         image_url=doc.get("image_url"),
+        images=doc.get("images", []),
         dosage_form=doc.get("dosage_form"),
         strength=doc.get("strength"),
         pack_size=doc.get("pack_size"),
@@ -189,22 +190,34 @@ async def create_medicine(
     return medicine_doc_to_out(doc)
 
 
-@router.post("/{medicine_id}/image", response_model=MedicineOut)
-async def upload_medicine_image(
+@router.post("/{medicine_id}/images", response_model=MedicineOut)
+async def upload_medicine_images(
     medicine_id: str,
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     admin: dict = Depends(get_admin_user),
 ):
     doc = await medicines_collection.find_one({"_id": ObjectId(medicine_id)})
     if not doc:
         raise HTTPException(status_code=404, detail="Medicine not found")
 
-    image_url = await upload_image(file, folder="medical_store/medicines")
+    image_urls = []
+    for file in files:
+        url = await upload_image(file, folder="medical_store/medicines")
+        image_urls.append(url)
+
+    existing_images = doc.get("images", [])
+    if doc.get("image_url") and doc.get("image_url") not in existing_images:
+        existing_images.insert(0, doc.get("image_url"))
+        
+    all_images = existing_images + image_urls
+    main_image_url = all_images[0] if all_images else doc.get("image_url")
+
     await medicines_collection.update_one(
         {"_id": ObjectId(medicine_id)},
-        {"$set": {"image_url": image_url}},
+        {"$set": {"image_url": main_image_url, "images": all_images}},
     )
-    doc["image_url"] = image_url
+    doc["image_url"] = main_image_url
+    doc["images"] = all_images
     return medicine_doc_to_out(doc)
 
 
@@ -234,9 +247,20 @@ async def delete_medicine(
     medicine_id: str,
     admin: dict = Depends(get_admin_user),
 ):
-    result = await medicines_collection.delete_one({"_id": ObjectId(medicine_id)})
-    if result.deleted_count == 0:
+    doc = await medicines_collection.find_one({"_id": ObjectId(medicine_id)})
+    if not doc:
         raise HTTPException(status_code=404, detail="Medicine not found")
+
+    images_to_delete = doc.get("images", [])
+    if doc.get("image_url") and doc.get("image_url") not in images_to_delete:
+        images_to_delete.append(doc.get("image_url"))
+
+    for img_url in images_to_delete:
+        public_id = extract_public_id(img_url)
+        if public_id:
+            delete_image(public_id)
+
+    result = await medicines_collection.delete_one({"_id": ObjectId(medicine_id)})
     return {"message": "Medicine deleted successfully"}
 
 

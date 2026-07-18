@@ -25,6 +25,7 @@ class MedicineCreate(BaseModel):
     stock: int = Field(default=0, ge=0)
     requires_prescription: bool = False
     image_url: Optional[str] = None
+    images: Optional[List[str]] = []
     dosage_form: Optional[str] = None  # tablet, syrup, injection, etc.
     strength: Optional[str] = None  # e.g., "500mg"
     pack_size: Optional[str] = None  # e.g., "10 tablets"
@@ -44,6 +45,7 @@ class MedicineUpdate(BaseModel):
     stock: Optional[int] = None
     requires_prescription: Optional[bool] = None
     image_url: Optional[str] = None
+    images: Optional[List[str]] = None
     dosage_form: Optional[str] = None
     strength: Optional[str] = None
     pack_size: Optional[str] = None
@@ -67,6 +69,7 @@ class MedicineOut(BaseModel):
     stock: int
     requires_prescription: bool = False
     image_url: Optional[str] = None
+    images: Optional[List[str]] = []
     dosage_form: Optional[str] = None
     strength: Optional[str] = None
     pack_size: Optional[str] = None
